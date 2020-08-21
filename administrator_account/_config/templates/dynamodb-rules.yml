@@ -1,0 +1,91 @@
+Parameters:
+  SnsTopicForPublishNotificationArn:
+    Description: The ARN of the SNS topic to which the notification about the auto-remediation status should be published.
+    Type: String
+
+Resources:
+  DynamoDbAutoscalingEnabled:
+    Properties:
+      ConfigRuleName: DynamoDbAutoscalingEnabled
+      Description: "This rule checks whether Auto Scaling is enabled on your DynamoDB tables. Optionally you can set the read and write capacity units for the table."
+      MaximumExecutionFrequency: Six_Hours
+      Scope:
+        ComplianceResourceTypes:
+          - "AWS::DynamoDB::Table"
+      Source:
+        Owner: AWS
+        SourceIdentifier: DYNAMODB_AUTOSCALING_ENABLED
+    Type: "AWS::Config::ConfigRule"
+  DynamoDbAutoscalingEnabledManualRemediation:
+    DependsOn: DynamoDbAutoscalingEnabled
+    Type: 'AWS::Config::RemediationConfiguration'
+    Properties:
+      ConfigRuleName: DynamoDbAutoscalingEnabled
+      ResourceType: "AWS::DynamoDB::Table"
+      TargetId: "AWS-PublishSNSNotification"
+      TargetType: "SSM_DOCUMENT"
+      TargetVersion: "1"
+      Parameters:
+        AutomationAssumeRole:
+          StaticValue:
+            Values: 
+              - !Sub "arn:aws:iam::${AWS::AccountId}:role/PublishSnsAutomationExecutionRole"
+        Message:
+          StaticValue:
+            Values:
+              - "A table with no autoscaling configuration found"
+        TopicArn:
+          StaticValue:
+            Values:
+              - Ref: SnsTopicForPublishNotificationArn
+
+  DynamoDbTableEncryptionEnabled:
+    Properties:
+      ConfigRuleName: DynamoDbTableEncryptionEnabled
+      Description: "Checks whether the Amazon DynamoDB tables are encrypted and checks their status. The rule is compliant if the status is enabled or enabling."
+      Scope:
+        ComplianceResourceTypes:
+          - "AWS::DynamoDB::Table"
+      Source:
+        Owner: AWS
+        SourceIdentifier: DYNAMODB_TABLE_ENCRYPTION_ENABLED
+    Type: "AWS::Config::ConfigRule"
+  DynamoDbTableEncryptionEnabledAutoRemediation:
+    DependsOn: DynamoDbTableEncryptionEnabled
+    Type: 'AWS::Config::RemediationConfiguration'
+    Properties:
+      ConfigRuleName: DynamoDbTableEncryptionEnabled
+      ResourceType: "AWS::DynamoDB::Table"
+      TargetId: "AWS-PublishSNSNotification"
+      TargetType: "SSM_DOCUMENT"
+      TargetVersion: "1"
+      Parameters:
+        AutomationAssumeRole:
+          StaticValue:
+            Values: 
+              - !Sub "arn:aws:iam::${AWS::AccountId}:role/PublishSnsAutomationExecutionRole"
+        Message:
+          StaticValue:
+            Values:
+              - "A table with no encryption enabled is found"
+        TopicArn:
+          StaticValue:
+            Values:
+              - Ref: SnsTopicForPublishNotificationArn
+      ExecutionControls:
+        SsmControls:
+          ConcurrentExecutionRatePercentage: 10
+          ErrorPercentage: 10
+      Automatic: True
+      MaximumAutomaticAttempts: 10
+      RetryAttemptSeconds: 600
+
+  DynamoDbThroughputLimitCheck:
+    Properties:
+      ConfigRuleName: DynamoDbThroughputLimitCheck
+      Description: "Checks whether provisioned DynamoDB throughput is approaching the maximum limit for your account."
+      MaximumExecutionFrequency: Six_Hours
+      Source:
+        Owner: AWS
+        SourceIdentifier: DYNAMODB_THROUGHPUT_LIMIT_CHECK
+    Type: "AWS::Config::ConfigRule"
