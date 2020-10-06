@@ -1,8 +1,6 @@
-# Terraform Multi-Region Organization Config Rules
+# Terraform Stack to launch AWS Config Rules
 
-## Installation
-
-Instructions for installing the Terraform software can be found [here](https://learn.hashicorp.com/terraform/getting-started/install.html).
+This Terraform stack generates a specified set of AWS Config Rules and aggregates them to a specified security account.
 
 ## Pre-requisites
 
@@ -14,235 +12,210 @@ make sure that it has a Primary Key value of "LockID".
 
 2) Create the S3 bucket. This will store the state file when a 'terraform apply' is executed after backend initialization has succeeded.
 
-3) Modify the administrator_account/backend.tf and secondary_account/backend.tf, respectively.
-  a) Adjust the following parameters:
-
-  | Name | Description | 
-  |------|-------------|
-  | key | This will be the path of your Terraform state file. |
-  | bucket | The Amazon S3 bucket that the Terraform state file will be deployed to and referenced. |
-  | region | The region of the S3 bucket |
-  | dynamodb_table | The name of a DynamoDB table to use for state locking and consistency. The table must have a primary key named LockID. If not present, locking will be disabled. |
-
-```
-
+3) Modify the backend.tf
     terraform {
         backend "s3" {
             key            = ENTER_DESIRED_STATE_FILE_NAME
+            encrypt        = true
             bucket         = ENTER_S3_BUCKET
             region         = ENTER_REGION
             dynamodb_table = ENTER_DYNAMODB_TABLE
         }
     }
-```
 
-When the correct values are put in place for each parameter, and you run a terraform init, this will initialize the backend on the first run. The Terraform state file will create once resources are created. On subsequent initialization (terraform init) runs, a connection will be made to the state file. 
-
-## Running Terraform stack
-
-### Setup secondary accounts
-
-To run this solution, we will want to go to the secondary account folder and run the initialization. Your output should look similar to the following:
-
-```
-14:27 $ terraform init
-Initializing modules...
-
-Initializing the backend...
-
-Initializing provider plugins...
-
-The following providers do not have any version constraints in configuration,
-so the latest version was installed.
-
-To prevent automatic upgrades to new major versions that may contain breaking
-changes, it is recommended to add version = "..." constraints to the
-corresponding provider blocks in configuration, with the constraint strings
-suggested below.
-
-* provider.aws: version = "~> 2.66"
-
-Terraform has been successfully initialized!
-
-You may now begin working with Terraform. Try running "terraform plan" to see
-any changes that are required for your infrastructure. All Terraform commands
-should now work.
-
-If you ever set or change modules or backend configuration for Terraform,
-rerun this command to reinitialize your working directory. If you forget, other
-commands will detect it and remind you to do so if necessary.
-```
-
-From there, once our current working directory is initialized, we can run a ```terraform plan``` and ```terraform apply```.
-This will start to process and create all the resources, along with our authorizaiton as indicated below:
-
-```
-module.us-east-1.aws_config_delivery_channel.config_channel: Creation complete after 3s [id=default]
-module.us-east-1.aws_config_configuration_recorder_status.config_recorder_status: Creating...
-module.us-east-2.aws_config_configuration_recorder_status.config_recorder_status: Creation complete after 1s [id=default]
-module.us-east-1.aws_config_configuration_recorder_status.config_recorder_status: Creation complete after 1s [id=default]
-
-Apply complete! Resources: 17 added, 0 changed, 0 destroyed.
-```
-
-### Setup Config administrator account
-
-Once this is complete, we will want to navigate to the administrator folder and run through the same process. When the stack has completed creating, we'll see the output of the following:
-
-```
-module.secondary.aws_config_organization_managed_rule.s3_public_access_organization_config_rules: Still creating... [2m20s elapsed]
-module.secondary.aws_config_organization_managed_rule.s3_public_access_organization_config_rules: Still creating... [2m30s elapsed]
-module.secondary.aws_config_organization_managed_rule.s3_public_access_organization_config_rules: Creation complete after 2m35s [id=s3-account-level-public-access-blocks]
-
-Apply complete! Resources: 30 added, 0 changed, 0 destroyed.
-
-Outputs:
-
-config_aggregator_arn = arn:aws:config:us-east-1:725369550382:config-aggregator/config-aggregator-j0ushwgk
-```
-
-## Summary
-
-Terraform is broken down into three main components:
-
-- Providers
-- Variables
-- Resources
-
-We will look at how these components work together in a Terraform configuration. 
-
-
-### Providers
-
-Terraform is used to create, manage, and update infrastructure resources. In this case, it's used to create the Amazon Simple Storage Service (Amazon S3) buckets, AWS Organization Conig rules along with other infrastructure types that are represented as a resource in Terraform. 
-
-For the administrator and secondary accounts, the Terraform configuration works off of aliases and the region for each provider is set in ```provider.tf```
-
-Administrator account:
-
-```
-provider aws {
-  region = "us-east-1" 
-}
-
-provider aws {
-  alias  = "secondary"
-  region = "us-east-2"
-}
-```
-
-Secondary account(s):
-
-```
-provider aws {
-  alias                   = "secondary-account-virginia"
-  region                  = "us-east-1" 
-  profile                 = "secondary_account"
-}
-
-provider aws {
-  alias                   = "secondary-account-ohio"
-  region                  = "us-east-2"
-  profile                 = "secondary_account"
-}
-```
-
-This will tie into the modules that are created for each account, respectively.
-
-Administrator account:
-
-```
-module "primary" {
-  source = "./config"
-
-  providers = {
-    aws = aws
-  }
-}
-
-module "secondary" {
-  source = "./config"
-
-  providers = {
-    aws = aws.secondary
-  }
-}
-```
-
-If the region needs to be set at a different region from this configuration, modify the ```provider.tf``` file. If additional regions need to be configured, add another provider and module as necessary.
-
-## Variables
-
-In addition to the environment variables that we can use in our provider, Terraform allows us to explicitly declare variables, which we can use to make our config dynamic. In the current configuration, we declare four variables for the administrator account, two for the secondary account(s).
-
-The syntax for a variable is as follows:
-
-```
-variable “[variable name]” {
-    default     = “[optional]”
-    description = “[optional]”
-  type        = “string|int|list|map”
-```
-
-- default: Allows you to specify a default value for a variable.
-- description: Allows you to add a human-readable description that describes the purpose of the variable.
-- type: Defines the type of the variable.
-
-Here are the variables for the administrator account configuration:
-
-| Name | Description | Type | Default | Required |
-|------|-------------|:----:|:-----:|:-----:|
-| password_parameters | Parameters for the IAM Account Password policy | map(string) | `"Default in configuration"` | yes |
-| config_role_name | Name of the IAM Role used for AWS Config | string | `"OrganizationConfigRole"` | yes |
-| aggregator_name | Name of the AWS Config aggregator | string | `"organization-aggregator"` | yes |
-| encryption_enabled | Determines if server-side encryption is enabled for S3 Bucket | boolean | `"true"` | yes |
-
-Here are the variables for the secondary account configuration:
-
-| Name | Description | Type | Default | Required |
-|------|-------------|:----:|:-----:|:-----:|
-| source_account_number | Delegated Administrator account | string | `""` | yes |
-| encryption_enabled | Determines if server-side encryption is enabled for S3 Bucket | boolean | `"true"` | yes |
-
-Variables can be automatically set in the ```variables.tf``` file or through the ```terraform.tfvars```. 
 
 ## Resources
 
-Resources in this configuration are the componenet of our infrastructure. It could serve as a Virtual Private Cloud, S3 bucket, or a virtual machine. In this solution, most of our resources serve as Organization Config Rules.
+This module creates the following resources:
 
-In the administrator account folder, most of our resources are set in the config module, particularly in the ```config.tf``` file.
-
-Most of the rules are configured as follows:
-
-```
-# AWS Config Rule that checks whether users of your AWS account require a multi-factor authentication (MFA) 
-# device to sign in with root credentials.
-resource "aws_config_organization_managed_rule" "root_account_mfa_organization_config_rules" {
-  count = data.aws_region.current.name == "us-east-1" ? 1 : 0
-  depends_on        = [
-    aws_config_configuration_recorder.config_recorder
-  ]
-
-  name              = "root-account-mfa-enabled"
-  rule_identifier   = "ROOT_ACCOUNT_MFA_ENABLED"
-}
+- aws_iam_role_policy_attachment
+- aws_iam_role
+- aws_iam_role_policy
+- aws_config_configuration_recorder_status
+- aws_config_delivery_channel
+- aws_config_configuration_recorder
+- aws_config_config_rule
+- aws_config_configuration_recorder_status
 
 
-# AWS Config Rule that checks whether the required public access block settings are configured from account level. 
-# The rule is only NON_COMPLIANT when the fields set below do not match the corresponding fields in the configuration 
-# item.
-resource "aws_config_organization_managed_rule" "s3_public_access_organization_config_rules" {
-  depends_on        = [
-    aws_config_configuration_recorder.config_recorder
-  ]
+## Usage
 
-  name              = "s3-account-level-public-access-blocks"
-  rule_identifier   = "S3_ACCOUNT_LEVEL_PUBLIC_ACCESS_BLOCKS"
-}
+Run the following commands to initialize terraform directory, plan and apply (launch Terraform stack) while modifying the stack_name variable
 
-```
+1) terraform init
 
-Terraform has its own version of for loops. In this case, we have IAM specific rules that are being created. Since IAM is a global service, it doesn't make sense to have duplicate monitoring in both us-east-1 and us-east-2 (as our example regions). This is where ```count``` comes in, we specific that if our region is us-east-1, create one resource of this type. If it isn't us-east-1, don't create a resource.
+2) terraform plan -var stack_name="release"
+
+3) terraform apply -var stack_name="release"
+
+When initialized and applied, the Terraform stack will create a set of AWS Config Rules. It goes through a for loop based on the [count](https://www.terraform.io/intro/examples/count.html) parameter and evaluates the length of the rules variable list to determine how often to iterate. 
+
+    resource "aws_config_config_rule" "config_rule" {
+        count             = length(var.rules)
+        depends_on        = [
+            aws_config_configuration_recorder.config_recorder
+        ]
+
+        input_parameters = lookup(var.input_parameters, element(var.rules, count.index), "")
+        name              = element(var.rules, count.index)
+
+        source {
+            owner             = "AWS"
+            source_identifier = lookup(var.source_identifiers, element(var.rules, count.index))
+        }
+    }
+
+    variable "rules" {
+        default     = [
+            "cloudtrail-enabled",
+            "restricted-ssh",
+            "root-account-mfa-enabled",
+            "s3-bucket-logging-enabled",
+            "s3-bucket-public-read-prohibited",
+            "s3-bucket-public-write-prohibited",
+            "s3-bucket-ssl-requests-only",
+            "s3-bucket-server-side-encryption-enabled",
+            "rds-storage-encrypted",
+            "encrypted-volumes",
+            "iam-password-policy"
+        ]
+        description = "The list of rules to enable in AWS Config. Used with source_identifiers mapping for AWS Config Managed Rules."
+        type        = list
+    }
+
+    variable "source_identifiers" {
+        default     = {
+            access-keys-rotated                                     = "ACCESS_KEYS_ROTATED"
+            acm-certificate-expiration-check                        = "ACM_CERTIFICATE_EXPIRATION_CHECK"
+            alb-http-to-https-redirection-check                     = "ALB_HTTP_TO_HTTPS_REDIRECTION_CHECK"
+            api-gw-execution-logging-enabled                        = "API_GW_EXECUTION_LOGGING_ENABLED"
+            api-gw-cache-enabled-and-encrypted                      = "API_GW_CACHE_ENABLED_AND_ENCRYPTED"
+            api-gw-endpoint-type-check                              = "API_GW_ENDPOINT_TYPE_CHECK"
+            aproved-amis-by-id                                      = "APPROVED_AMIS_BY_ID"
+            approved-amis-by-tag                                    = "APPROVED_AMIS_BY_TAG"
+            autoscaling-group-elb-healthcheck-required              = "AUTOSCALING_GROUP_ELB_HEALTHCHECK_REQUIRED"
+            cloudformation-stack-drift-detection-check              = "CLOUDFORMATION_STACK_DRIFT_DETECTION_CHECK"
+            cloudformation-stack-notification-check                 = "CLOUDFORMATION_STACK_NOTIFICATION_CHECK"
+            cloudfront-viewer-policy-https                          = "CLOUDFRONT_VIEWER_POLICY_HTTPS"
+            cloud-trail-cloud-watch-logs-enabled                    = "CLOUD_TRAIL_CLOUD_WATCH_LOGS_ENABLED"
+            cloudtrail-enabled                                      = "CLOUD_TRAIL_ENABLED"
+            cloud-trail-encryption-enabled                          = "CLOUD_TRAIL_ENCRYPTION_ENABLED"
+            cloud-trail-log-file-validation-enabled                 = "CLOUD_TRAIL_LOG_FILE_VALIDATION_ENABLED"
+            cloudwatch-alarm-action-check                           = "CLOUDWATCH_ALARM_ACTION_CHECK"
+            cloudwatch-alarm-resource-check                         = "CLOUDWATCH_ALARM_RESOURCE_CHECK"
+            cloudwatch-alarm-settings-check                         = "CLOUDWATCH_ALARM_SETTINGS_CHECK"
+            cloudwatch-log-group-encrypted                          = "CLOUDWATCH_LOG_GROUP_ENCRYPTED"
+            cmk-backing-key-rotation-enabled                        = "CMK_BACKING_KEY_ROTATION_ENABLED"
+            codebuild-project-envvar-awscred-check                  = "CODEBUILD_PROJECT_ENVVAR_AWSCRED_CHECK"
+            codebuild-project-source-repo-url-check                 = "CODEBUILD_PROJECT_SOURCE_REPO_URL_CHECK"
+            codepipeline-deployment-count-check                     = "CODEPIPELINE_DEPLOYMENT_COUNT_CHECK"
+            codepipeline-region-fanout-check                        = "CODEPIPELINE_REGION_FANOUT_CHECK"
+            db-instance-backup-enabled                              = "DB_INSTANCE_BACKUP_ENABLED"
+            desired-instance-tenancy                                = "DESIRED_INSTANCE_TENANCY"
+            desired-instance-type                                   = "DESIRED_INSTANCE_TYPE"
+            dms-replication-not-public                              = "DMS_REPLICATION_NOT_PUBLIC"
+            dynamodb-autoscaling-enabled                            = "DYNAMODB_AUTOSCALING_ENABLED"
+            dynamodb-throughput-limit-check                         = "DYNAMODB_THROUGHPUT_LIMIT_CHECK"
+            dynamodb-encryption-encryption-enabled                  = "DYNAMODB_TABLE_ENCRYPTION_ENABLED"
+            dynamodb-table-encryption-enabled                       = "DYNAMODB_TABLE_ENCRYPTION_ENABLED"
+            ebs-optimized-instance                                  = "EBS_OPTIMIZED_INSTANCE"
+            ebs-snapshot-public-restorable-check                    = "EBS_SNAPSHOT_PUBLIC_RESTORABLE_CHECK"
+            ec2-instance-detailed-monitoring-enabled                = "EC2_INSTANCE_DETAILED_MONITORING_ENABLED"
+            ec2-instances-in-vpc                                    = "INSTANCES_IN_VPC"
+            ec2-instance-managed-by-systems-manager                 = "EC2_INSTANCE_MANAGED_BY_SSM"
+            ec2-instance-no-public-ip                               = "EC2_INSTANCE_NO_PUBLIC_IP"
+            ec2-managedinstance-applications-blacklisted            = "EC2_MANAGEDINSTANCE_APPLICATIONS_BLACKLISTED"
+            ec2-managedinstance-applications-required               = "EC2_MANAGEDINSTANCE_APPLICATIONS_REQUIRED"
+            ec2-managedinstance-association-compliance-status-check = "EC2_MANAGEDINSTANCE_ASSOCIATION_COMPLIANCE_STATUS_CHECK"
+            ec2-managedinstance-inventory-blacklisted               = "EC2_MANAGEDINSTANCE_INVENTORY_BLACKLISTED"
+            ec2-managedinstance-patch-compliance-status-check       = "EC2_MANAGEDINSTANCE_PATCH_COMPLIANCE_STATUS_CHECK"
+            ec2-managedinstance-platform-check                      = "EC2_MANAGEDINSTANCE_PLATFORM_CHECK"
+            ec2-security-group-attached-to-eni                      = "EC2_SECURITY_GROUP_ATTACHED_TO_ENI"
+            ec2-stopped-instance                                    = "EC2_STOPPED_INSTANCE"
+            ec2-volume-inuse-check                                  = "EC2_VOLUME_INUSE_CHECK"
+            efs-encrypted-check                                     = "EFS_ENCRYPTED_CHECK"
+            eip-attached                                            = "EIP_ATTACHED"
+            elasticache-redis-cluster-automatic-backup-check        = "ELASTICACHE_REDIS_CLUSTER_AUTOMATIC_BACKUP_CHECK"
+            elasticsearch-encrypted-at-rest                         = "ELASTICSEARCH_ENCRYPTED_AT_REST"
+            elasticsearch-in-vpc-only                               = "ELASTICSEARCH_IN_VPC_ONLY"
+            elb-acm-certificate-required                            = "ELB_ACM_CERTIFICATE_REQUIRED"
+            elb-custom-security-policy-ssl-check                    = "ELB_CUSTOM_SECURITY_POLICY_SSL_CHECK"
+            elb-deletion-protection-enabled                         = "ELB_DELETION_PROTECTION_ENABLED"
+            elb-logging-enabled                                     = "ELB_LOGGING_ENABLED"
+            elb-predefined-security-policy-ssl-check                = "ELB_PREDEFINED_SECURITY_POLICY_SSL_CHECK"
+            emr-kerberos-enabled                                    = "EMR_KERBEROS_ENABLED"
+            emr-master-no-public-ip                                 = "EMR_MASTER_NO_PUBLIC_IP"
+            encrypted-volumes                                       = "ENCRYPTED_VOLUMES"
+            fms-security-group-audit-policy-check                   = "FMS_SECURITY_GROUP_AUDIT_POLICY_CHECK"
+            fms-security-group-content-check                        = "FMS_SECURITY_GROUP_CONTENT_CHECK"
+            fms-security-group-resource-association-check           = "FMS_SECURITY_GROUP_RESOURCE_ASSOCIATION_CHECK"  
+            fms-shield-resource-policy-check                        = "FMS_SHIELD_RESOURCE_POLICY_CHECK"
+            fms-webacl-resource-policy-check                        = "FMS_WEBACL_RESOURCE_POLICY_CHECK"
+            fms-webacl-rulegroup-association-check                  = "FMS_WEBACL_RULEGROUP_ASSOCIATION_CHECK"
+            guardduty-enabled-centralized                           = "GUARDDUTY_ENABLED_CENTRALIZED"
+            guardduty-non-archived-findings                         = "GUARDDUTY_NON_ARCHIVED_FINDINGS"
+            iam-password-policy                                     = "IAM_PASSWORD_POLICY"
+            iam-group-has-users-check                               = "IAM_GROUP_HAS_USERS_CHECK"
+            iam-policy-blacklisted-check                            = "IAM_POLICY_BLACKLISTED_CHECK"
+            iam-policy-in-use                                       = "IAM_POLICY_IN_USE"
+            iam-policy-no-statements-with-admin-access              = "IAM_POLICY_NO_STATEMENTS_WITH_ADMIN_ACCESS"
+            iam-role-managed-policy-check                           = "IAM_ROLE_MANAGED_POLICY_CHECK"
+            iam-root-access-key-check                               = "IAM_ROOT_ACCESS_KEY_CHECK"
+            iam-user-group-membership-check                         = "IAM_USER_GROUP_MEMBERSHIP_CHECK"
+            iam-user-mfa-enabled                                    = "IAM_USER_MFA_ENABLED"
+            iam-user-no-policies-check                              = "IAM_USER_NO_POLICIES_CHECK"
+            iam-user-unused-credentials-check                       = "IAM_USER_UNUSED_CREDENTIALS_CHECK"
+            internet-gateway-authorized-vpc-only                    = "INTERNET_GATEWAY_AUTHORIZED_VPC_ONLY"
+            kms-cmk-not-scheduled-for-deletion                      = "KMS_CMK_NOT_SCHEDULED_FOR_DELETION"
+            lambda-concurrency-check                                = "LAMBDA_CONCURRENCY_CHECK"
+            lambda-dlq-check                                        = "LAMBDA_DLQ_CHECK"
+            lambda-function-settings-check                          = "LAMBDA_FUNCTION_SETTINGS_CHECK"
+            lambda-function-public-access-prohibited                = "LAMBDA_FUNCTION_PUBLIC_ACCESS_PROHIBITED"
+            lambda-inside-vpc                                       = "LAMBDA_INSIDE_VPC"
+            mfa-enabled-for-iam-console-access                      = "MFA_ENABLED_FOR_IAM_CONSOLE_ACCESS"
+            multi-region-cloud-trail-enabled                        = "MULTI_REGION_CLOUD_TRAIL_ENABLED"
+            rds-enhanced-monitoring-enabled                         = "RDS_ENHANCED_MONITORING_ENABLED"
+            rds-instance-public-access-check                        = "RDS_INSTANCE_PUBLIC_ACCESS_CHECK"
+            rds-multi-az-support                                    = "RDS_MULTI_AZ_SUPPORT"
+            rds-snapshots-public-prohibited                         = "RDS_SNAPSHOTS_PUBLIC_PROHIBITED"
+            rds-storage-encrypted                                   = "RDS_STORAGE_ENCRYPTED"
+            redshift-cluster-configuration-check                    = "REDSHIFT_CLUSTER_CONFIGURATION_CHECK"
+            redshift-cluster-maintenancesettings-check              = "REDSHIFT_CLUSTER_MAINTENANCESETTINGS_CHECK"
+            redshift-cluster-public-access-check                    = "REDSHIFT_CLUSTER_PUBLIC_ACCESS_CHECK"
+            required-tags                                           = "REQUIRED_TAGS"
+            restricted-common-ports                                 = "RESTRICTED_INCOMING_TRAFFIC"
+            restricted-ssh                                          = "INCOMING_SSH_DISABLED"
+            root-account-hardware-mfa-enabled                       = "ROOT_ACCOUNT_HARDWARE_MFA_ENABLED"
+            root-account-mfa-enabled                                = "ROOT_ACCOUNT_MFA_ENABLED"
+            sagemaker-endpoint-configuration-kms-key-configured     = "SAGEMAKER_ENDPOINT_CONFIGURATION_KMS_KEY_CONFIGURED"
+            sagemaker-notebook-no-direct-internet-access            = "SAGEMAKER_NOTEBOOK_NO_DIRECT_INTERNET_ACCESS"
+            sagemaker-notebook-kms-configured                       = "SAGEMAKER_NOTEBOOK_INSTANCE_KMS_KEY_CONFIGURED"
+            service-vpc-endpoint-enabled                            = "SERVICE_VPC_ENDPOINT_ENABLED"
+            shield-advanced-enabled-autorenew                       = "SHIELD_ADVANCED_ENABLED_AUTORENEW"
+            shield-drt-access                                       = "SHIELD_DRT_ACCESS"
+            s3-account-level-public-access-blocks                   = "S3_ACCOUNT_LEVEL_PUBLIC_ACCESS_BLOCKS"
+            s3-blacklisted-actions-prohibited                       = "S3_BLACKLISTED_ACTIONS_PROHIBITED"
+            s3-bucket-logging-enabled                               = "S3_BUCKET_LOGGING_ENABLED"
+            s3-bucket-policy-grantee-check                          = "S3_BUCKET_POLICY_GRANTEE_CHECK"
+            s3-bucket-policy-not-more-permissive                    = "S3_BUCKET_POLICY_NOT_MORE_PERMISSIVE"
+            s3-bucket-public-read-prohibited                        = "S3_BUCKET_PUBLIC_READ_PROHIBITED"
+            s3-bucket-public-write-prohibited                       = "S3_BUCKET_PUBLIC_WRITE_PROHIBITED"
+            s3-bucket-replication-enabled                           = "S3_BUCKET_REPLICATION_ENABLED"
+            s3-bucket-server-side-encryption-enabled                = "S3_BUCKET_SERVER_SIDE_ENCRYPTION_ENABLED"
+            s3-bucket-ssl-requests-only                             = "S3_BUCKET_SSL_REQUESTS_ONLY"
+            s3-bucket-versioning-enabled                            = "S3_BUCKET_VERSIONING_ENABLED"
+            vpc-default-security-group-closed                       = "VPC_DEFAULT_SECURITY_GROUP_CLOSED"
+            vpc-flow-logs-enabled                                   = "VPC_FLOW_LOGS_ENABLED"
+            vpc-sg-open-only-to-authorized-ports                    = "VPC_SG_OPEN_ONLY_TO_AUTHORIZED_PORTS"
+            vpc-vpn-2-tunnels-up                                    = "VPC_VPN_2_TUNNELS_UP"
+        }
+        description = "To be used as reference as key is mapped to a AWS Managed rule. For full lists - https://docs.aws.amazon.com/config/latest/developerguide/managed-rules-by-aws-config.html"
+        type        = map
+    }
+
+For certain AWS Managed Config Rules, input parameters are required. Reference the [documentation](https://docs.aws.amazon.com/config/latest/developerguide/managed-rules-by-aws-config.html") to determine which managed rules require a parameter.
+
+Parts of Terraform base code were derived from the following Github [repository](https://github.com/QuiNovas/terraform-aws-config)
 
 ## Maintainer
 
