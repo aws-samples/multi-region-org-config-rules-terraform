@@ -30,6 +30,7 @@ resource "aws_iam_policy" "config_org_policy" {
       "Action": [
         "config:GetOrganizationConfigRuleDetailedStatus",
         "config:Put*",
+        "iam:GetPasswordPolicy",
         "organizations:ListAccounts",
         "organizations:DescribeOrganization",
         "organizations:ListAWSServiceAccessForOrganization",
