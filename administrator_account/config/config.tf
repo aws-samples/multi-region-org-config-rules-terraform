@@ -29,7 +29,7 @@ resource "aws_config_configuration_recorder" "config_recorder" {
 
 # AWS Config Rule that manages IAM Password Policy
 resource "aws_config_organization_managed_rule" "iam_policy_organization_config_rule" {
-  count = data.aws_region.current.name == "us-east-1" ? 1 : 0
+  count = data.aws_region.current.name == var.primary_region ? 1 : 0
   depends_on        = [
     aws_config_configuration_recorder.config_recorder
   ]
@@ -41,7 +41,7 @@ resource "aws_config_organization_managed_rule" "iam_policy_organization_config_
 
 # AWS Config Rule that manages IAM Root Access Keys to see if they exist
 resource "aws_config_organization_managed_rule" "iam_root_access_key_organization_config_rule" {
-  count = data.aws_region.current.name == "us-east-1" ? 1 : 0
+  count = data.aws_region.current.name == var.primary_region ? 1 : 0
   depends_on        = [
     aws_config_configuration_recorder.config_recorder
   ]
@@ -53,7 +53,7 @@ resource "aws_config_organization_managed_rule" "iam_root_access_key_organizatio
 # AWS Config Rule that checks whether your AWS account is enabled to use multi-factor authentication (MFA) 
 # hardware device to sign in with root credentials.
 resource "aws_config_organization_managed_rule" "root_hardware_mfa_organization_config_rule" {
-  count = data.aws_region.current.name == "us-east-1" ? 1 : 0
+  count = data.aws_region.current.name == var.primary_region ? 1 : 0
   depends_on        = [
     aws_config_configuration_recorder.config_recorder
   ]
@@ -65,7 +65,7 @@ resource "aws_config_organization_managed_rule" "root_hardware_mfa_organization_
 # AWS Config Rule that checks whether users of your AWS account require a multi-factor authentication (MFA) 
 # device to sign in with root credentials.
 resource "aws_config_organization_managed_rule" "root_account_mfa_organization_config_rules" {
-  count = data.aws_region.current.name == "us-east-1" ? 1 : 0
+  count = data.aws_region.current.name == var.primary_region ? 1 : 0
   depends_on        = [
     aws_config_configuration_recorder.config_recorder
   ]

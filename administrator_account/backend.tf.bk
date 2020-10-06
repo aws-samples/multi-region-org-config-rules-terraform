@@ -1,0 +1,15 @@
+# Make sure to update the values to their intended value
+# params:
+# key: This will be the path of your Terraform state file
+# bucket: The Amazon S3 bucket that the Terraform state file will be deployed to and referenced.
+# region: The region of the S3 bucket
+# dynamdb_table: The name of a DynamoDB table to use for state locking and consistency. The table must have a primary key named LockID. If not present, locking will be disabled.
+
+terraform {
+    backend "s3" {
+        key            = ENTER_DESIRED_STATE_FILE_NAME
+        bucket         = ENTER_S3_BUCKET
+        region         = ENTER_REGION
+        dynamodb_table = ENTER_DYNAMODB_TABLE
+    }
+}

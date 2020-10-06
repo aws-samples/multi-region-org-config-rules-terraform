@@ -1,14 +1,3 @@
-variable "config_role_name" {
-  description = "Name of Organization Config Role"
-  default = "OrganizationConfigRole"
-}
-
-variable "primary_region" {
-  type        = string
-  default     = "us-east-1"
-  description = "Primary region used for condition with global resources for Config Rules."
-}
-
 ##########
 # S3 Variables
 ##########
@@ -18,6 +7,11 @@ variable "encryption_enabled" {
   description = "When set to 'true' the resource will have AES256 encryption enabled by default"
 }
 
+variable "primary_region" {
+  type        = string
+  default     = "us-east-1"
+  description = "Primary region used for condition with global resources for Config Rules."
+}
 
 ##################
 # Config Variables
@@ -40,4 +34,14 @@ variable "password_parameters" {
     }
       EOF
   }
+}
+
+variable "config_role_name" {
+  description = "Name of Organization Config Role"
+  default = "OrganizationConfigRole"
+}
+
+variable "aggregator_name" {
+  description = "Name of Config Aggregator"
+  default = "organization-aggregator"
 }
