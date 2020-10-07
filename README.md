@@ -245,6 +245,12 @@ resource "aws_config_organization_managed_rule" "s3_public_access_organization_c
 
 Terraform has its own version of for loops. In this case, we have IAM specific rules that are being created. Since IAM is a global service, it doesn't make sense to have duplicate monitoring in both us-east-1 and us-east-2 (as our example regions). This is where ```count``` comes in, we specific that if our region is us-east-1, create one resource of this type. If it isn't us-east-1, don't create a resource.
 
+## Caveats
+
+This solution will create an AWS Config Recorder and Delivery channel. These resources are created per region. If you're using an AWS Landing Zone or AWS Control Tower solution, this script will have to be modified as you're only allowed one of each of the aforementioned resources within a region. Otherwise, the Terraform stack on deployment will fail. 
+
+The Organization Config Rules are used as an example and any rules can be added or removed based on user needs. 
+
 ## Maintainer
 
 For support please contact:
